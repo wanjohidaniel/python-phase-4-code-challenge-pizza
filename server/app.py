@@ -39,7 +39,7 @@ class RestaurantsResource(Resource):
 class RestaurantResource(Resource):
     def get(self, id):
         try:
-            restaurant = Restaurant.query.get(id)
+            restaurant = db.session.query(Restaurant).filter_by(id=id).one_or_none()
             if not restaurant:
                 return jsonify({"error": "Restaurant not found"}), 404
             return jsonify(restaurant.to_dict(include_relationships=True)), 200
@@ -61,7 +61,7 @@ def get_restaurants():
 @app.route('/restaurants/<int:id>', methods=['GET'])
 def get_restaurant(id):
     try:
-        restaurant = Restaurant.query.get(id)
+        restaurant = db.session.query(Restaurant).filter_by(id=id).one_or_none()
         if not restaurant:
             return jsonify({'error': 'Restaurant not found'}), 404
         
@@ -92,11 +92,10 @@ def get_restaurant(id):
 @app.route("/restaurants/<int:id>", methods=["DELETE"])
 def delete_restaurant(id):
     try:
-        restaurant = Restaurant.query.get(id)
+        restaurant = db.session.query(Restaurant).filter_by(id=id).one_or_none()
         if not restaurant:
             return jsonify({"error": "Restaurant not found"}), 404
         
-        RestaurantPizza.query.filter_by(restaurant_id=id).delete()
         db.session.delete(restaurant)
         db.session.commit()
         
@@ -104,6 +103,32 @@ def delete_restaurant(id):
     except Exception as e:
         app.logger.error(f"Error deleting restaurant {id}: {e}")
         return jsonify({"error": str(e)}), 500
+
+# Route for creating restaurant pizzas
+@app.route("/restaurant_pizzas", methods=["POST"])
+def create_restaurant_pizzas():
+    try:
+        data = request.json
+        pizza_id = data.get("pizza_id")
+        restaurant_id = data.get("restaurant_id")
+        price = data.get("price")
+
+        if not all([pizza_id, restaurant_id, price is not None]):
+            return jsonify({"errors": ["Missing data fields"]}), 400
+        
+        if not isinstance(price, int) or not (1 <= price <= 30):
+            return jsonify({"errors": ["Validation errors"]}), 400  # Return consistent error message
+        
+        restaurant_pizza = RestaurantPizza(
+            pizza_id=pizza_id, restaurant_id=restaurant_id, price=price
+        )
+        db.session.add(restaurant_pizza)
+        db.session.commit()
+
+        return jsonify(restaurant_pizza.to_dict()), 201  # Return 201 Created status
+    except Exception as e:
+        app.logger.error(f"Error creating restaurant pizza: {e}")
+        return jsonify({"errors": ["Failed to create restaurant pizza. Please check your input data."]}), 400
 
 # Route for getting all pizzas
 @app.route("/pizzas", methods=["GET"])
@@ -123,32 +148,6 @@ def get_pizzas():
     except Exception as e:
         app.logger.error(f"Error retrieving pizzas: {e}")
         return jsonify({"error": str(e)}), 500
-        
-# Route for creating restaurant pizzas
-@app.route("/restaurant_pizzas", methods=["POST"])
-def create_restaurant_pizzas():
-    try:
-        data = request.json
-        pizza_id = data.get("pizza_id")
-        restaurant_id = data.get("restaurant_id")
-        price = data.get("price")
-
-        if not all([pizza_id, restaurant_id, price is not None]):
-            return jsonify({"error": "Missing data fields"}), 400
-        
-        if not isinstance(price, int) or not (1 <= price <= 30):
-            return jsonify({"error": "Price must be an integer between 1 and 30"}), 400
-
-        restaurant_pizza = RestaurantPizza(
-            pizza_id=pizza_id, restaurant_id=restaurant_id, price=price
-        )
-        db.session.add(restaurant_pizza)
-        db.session.commit()
-
-        return jsonify(restaurant_pizza.to_dict()), 201  # Return 201 Created status
-    except Exception as e:
-        app.logger.error(f"Error creating restaurant pizza: {e}")
-        return jsonify({"error": str(e)}), 400
 
 # Register RESTful resources
 api.add_resource(RestaurantsResource, "/restaurants")

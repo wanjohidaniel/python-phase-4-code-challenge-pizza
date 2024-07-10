@@ -4,7 +4,11 @@ from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship, backref, validates
 from sqlalchemy_serializer import SerializerMixin
 
-db = SQLAlchemy()
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
 
 class Restaurant(db.Model, SerializerMixin):
     __tablename__ = "restaurants"
@@ -59,40 +63,3 @@ class RestaurantPizza(db.Model, SerializerMixin):
             raise ValueError('Price must be between 1 and 30')
         return value
 
-app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db.init_app(app)
-
-# Route for creating restaurant pizzas
-@app.route("/restaurant_pizzas", methods=["POST"])
-def create_restaurant_pizzas():
-    try:
-        data = request.json
-        pizza_id = data.get("pizza_id")
-        restaurant_id = data.get("restaurant_id")
-        price = data.get("price")
-
-        if not all([pizza_id, restaurant_id, price is not None]):
-            return jsonify({"error": "Missing data fields"}), 400
-        
-        if not isinstance(price, int) or not (1 <= price <= 30):
-            return jsonify({"error": "Price must be an integer between 1 and 30"}), 400
-
-        restaurant_pizza = RestaurantPizza(
-            pizza_id=pizza_id, restaurant_id=restaurant_id, price=price
-        )
-        db.session.add(restaurant_pizza)
-        db.session.commit()
-
-        return jsonify(restaurant_pizza.to_dict()), 201  # Return 201 Created status
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400  # Return validation error
-    except KeyError as e:
-        return jsonify({"error": f"Missing key: {str(e)}"}), 400  # Handle missing key error
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500  # Return generic server error
-
-if __name__ == "__main__":
-    app.run(port=5555, debug=True)
